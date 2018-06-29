@@ -75,48 +75,66 @@ Special note: feat_lens is used for tensorflow records
 * Each Feature associate with FeatureNameStatistics defined above, we use BasicNumStats and BasicStringStats to capture the basic statistics
 
 ```
-case class NamedDataFrame(name:String, data: DataFrame)
-case class DataEntrySet(name: String, size: Long, entries : Array[DataEntry])
-case class DataEntry(featureName: String,
-                     `type` : ProtoDataType,
-                     values:DataFrame,
-                     counts: DataFrame,
-                     missing : Long,
-                     feat_lens: Option[DataFrame] = None
-                    )
-case class BasicNumStats(name: String,
-                         numCount: Long = 0L,
-                         numNan :Long = 0L,
-                         numZeros:Long = 0L,
-                         numPosinf:Long = 0,
-                         numNeginf: Long = 0,
-                         stddev : Double = 0.0,
-                         mean   : Double = 0.0,
-                         min    : Double = 0.0,
-                         median : Double = 0.0,
-                         max    : Double = 0.0,
-                         histogram: (Array[Double], Array[Long])
-                        )
 
-case class BasicStringStats(name: String,
-                            numCount: Long = 0,
-                            numNan :Long = 0L
- )
- 
+case class NamedDataFrame(name:String, data: DataFrame)
+
+case class DataEntrySet(name     : String,
+                        size     : Long,
+                        entries  : Array[DataEntry])
+
+case class DataEntry(featureName : String,
+                     `type`      : ProtoDataType,
+                     values      : DataFrame,
+                     counts      : DataFrame,
+                     missing     : Long,
+                     featLens    : Option[DataFrame] = None)
+
+case class BasicNumStats(name: String,
+                         numCount  : Long = 0L,
+                         numNan    : Long = 0L,
+                         numZeros  : Long = 0L,
+                         numPosinf : Long = 0,
+                         numNeginf : Long = 0,
+                         stddev    : Double = 0.0,
+                         mean      : Double = 0.0,
+                         min       : Double = 0.0,
+                         median    : Double = 0.0,
+                         max       : Double = 0.0,
+                         histogram : (Array[Double], Array[Long]) )
+
+case class BasicStringStats(name     : String,
+                            numCount : Long = 0,
+                            numNan   : Long = 0L)
+
  
 ```
 
 Main  class
 
 ```
+
 class FeatureStatsGenerator(datasetProto: DatasetFeatureStatisticsList) {
 
- def protoFromDataFrames(dataFrames: List[NamedDataFrame],
-                         features : Set[String] = Set.empty[String],
-                         histgmCatLevelsCount:Option[Int]=None): DatasetFeatureStatisticsList = ???
-  
+  import FeatureStatsGenerator._
 
-}
+  /**
+    * Creates a feature statistics proto from a set of pandas data frames.
+    *
+    * @param dataFrames         A list of dicts describing tables for each dataset for the proto.
+    *                           Each entry contains a 'table' field of the dataframe of the data and a 'name' field
+    *                           to identify the dataset in the proto.
+    * @param catHistgmLevel int, controls the maximum number of levels to display in histograms
+    *                           for categorical features. Useful to prevent codes/IDs features
+    *                           from bloating the stats object. Defaults to None.
+    * @return The feature statistics proto for the provided tables.
+    */
+  def protoFromDataFrames(dataFrames     : List[NamedDataFrame],
+                          features       : Set[String] = Set.empty[String],
+                          catHistgmLevel : Option[Int] = None): DatasetFeatureStatisticsList = {
+
+    genDatasetFeatureStats(toDataEntries( dataFrames), features, catHistgmLevel)
+
+  }
 
 
  
@@ -129,9 +147,7 @@ class FeatureStatsGenerator(datasetProto: DatasetFeatureStatisticsList) {
 ```
 
  
-
   test("integration") {
-  
     val features = Array("Age", "Workclass", "fnlwgt", "Education", "Education-Num", "Marital Status",
                          "Occupation", "Relationship", "Race", "Sex", "Capital Gain", "Capital Loss",
                          "Hours per week", "Country", "Target")
@@ -142,16 +158,14 @@ class FeatureStatsGenerator(datasetProto: DatasetFeatureStatisticsList) {
     val train = trainData.toDF(features: _*)
     val test = testData.toDF(features: _*)
 
-    val dataframes = List(NamedDataFrame(name = "train", train), 
+    val dataframes = List(NamedDataFrame(name = "train", train),
                           NamedDataFrame(name = "test", test))
 
-
-    val generator = new FeatureStatsGenerator(DatasetFeatureStatisticsList())
-    
     val proto = generator.protoFromDataFrames(dataframes)
     persistProto(proto,base64Encode = false, new File("src/test/resources/data/stats.pb"))
     persistProto(proto,base64Encode = true, new File("src/test/resources/data/stats.txt"))
   }
+
   
   private def loadCSVFile(filePath: String) : DataFrame = {
     val spark = sqlContext.sparkSession
@@ -163,26 +177,33 @@ class FeatureStatsGenerator(datasetProto: DatasetFeatureStatisticsList) {
       .load(filePath)
   }
 
+
+  def writeToFile(fileName:String, content:String): Unit = {
+    import java.nio.charset.StandardCharsets
+    import java.nio.file.{Files, Paths}
+    Files.write(Paths.get(fileName), content.getBytes(StandardCharsets.UTF_8))
+  }
+
   private def toJson(proto: DatasetFeatureStatisticsList) : String = {
     import scalapb.json4s.JsonFormat
     JsonFormat.toJsonString(proto)
   }
   
   
-  private def persistProto(proto: DatasetFeatureStatisticsList, base64Encode: Boolean = false, file: File ) = {
+  private[spark] def persistProto(proto: DatasetFeatureStatisticsList, base64Encode: Boolean, file: File ):Unit = {
     if (base64Encode) {
       import java.util.Base64
       val b = Base64.getEncoder.encode(proto.toByteArray)
-      import java.nio.charset.Charset
+      import java.nio.charset.StandardCharsets.UTF_8
       import java.nio.file.{Files, Paths}
-      val  UTF8_CHARSET = Charset.forName("UTF-8")
 
-      Files.write(Paths.get(file.getPath), new String(b, UTF8_CHARSET).getBytes())
+      Files.write(Paths.get(file.getPath), new String(b, UTF_8).getBytes(UTF_8))
     }
     else {
       Files.write(Paths.get(file.getPath), proto.toByteArray)
     }
   }
+
 
 ```
 
