@@ -1,3 +1,11 @@
+# Note the Code is already Open-Sourced 
+
+Please see https://github.com/gopro/facets-overview-spark for the latest changes. 
+
+The current repository is no longer maintained
+
+
+
 # Facets Overview Spark
  
 * this code is intended to be give back to open-source community, therefore this is only temporary put here for testing
